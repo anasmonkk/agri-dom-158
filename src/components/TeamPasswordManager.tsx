@@ -1,13 +1,14 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Edit, Key } from "lucide-react";
+import { Edit, Key, Eye, EyeOff } from "lucide-react";
 
 interface ManagementTeam {
   id: string;
@@ -21,6 +22,8 @@ export const TeamPasswordManager = () => {
   const [selectedTeam, setSelectedTeam] = useState<ManagementTeam | null>(null);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -31,12 +34,18 @@ export const TeamPasswordManager = () => {
 
   const fetchTeams = async () => {
     try {
+      console.log('Fetching teams...');
       const { data, error } = await supabase
         .from('management_teams')
         .select('*')
         .order('name');
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching teams:', error);
+        throw error;
+      }
+      
+      console.log('Teams fetched:', data);
       setTeams(data || []);
     } catch (error) {
       console.error('Error fetching teams:', error);
@@ -51,6 +60,17 @@ export const TeamPasswordManager = () => {
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('Setting password for team:', selectedTeam?.name);
+    
+    if (!password || !confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Please fill in both password fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (password !== confirmPassword) {
       toast({
         title: "Error",
@@ -69,17 +89,32 @@ export const TeamPasswordManager = () => {
       return;
     }
 
-    if (!selectedTeam) return;
+    if (!selectedTeam) {
+      toast({
+        title: "Error",
+        description: "No team selected",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsLoading(true);
     
     try {
-      const { error } = await supabase
+      console.log('Updating password for team ID:', selectedTeam.id);
+      
+      const { data, error } = await supabase
         .from('management_teams')
         .update({ team_password: password })
-        .eq('id', selectedTeam.id);
+        .eq('id', selectedTeam.id)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Password updated successfully:', data);
 
       toast({
         title: "Success",
@@ -90,12 +125,16 @@ export const TeamPasswordManager = () => {
       setPassword('');
       setConfirmPassword('');
       setSelectedTeam(null);
-      fetchTeams();
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      
+      // Refresh teams data
+      await fetchTeams();
     } catch (error) {
       console.error('Error setting password:', error);
       toast({
         title: "Error",
-        description: "Failed to set team password",
+        description: "Failed to set team password. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -104,10 +143,22 @@ export const TeamPasswordManager = () => {
   };
 
   const openPasswordDialog = (team: ManagementTeam) => {
+    console.log('Opening password dialog for team:', team.name);
     setSelectedTeam(team);
     setPassword('');
     setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     setIsDialogOpen(true);
+  };
+
+  const closeDialog = () => {
+    setIsDialogOpen(false);
+    setSelectedTeam(null);
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
   };
 
   return (
@@ -160,7 +211,7 @@ export const TeamPasswordManager = () => {
           </TableBody>
         </Table>
 
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={closeDialog}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
@@ -174,35 +225,68 @@ export const TeamPasswordManager = () => {
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="password">New Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter team password"
-                  required
-                  minLength={6}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter team password"
+                    required
+                    minLength={6}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
               
               <div>
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm team password"
-                  required
-                  minLength={6}
-                />
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm team password"
+                    required
+                    minLength={6}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2">
                 <Button 
                   type="button" 
                   variant="outline" 
-                  onClick={() => setIsDialogOpen(false)}
+                  onClick={closeDialog}
+                  disabled={isLoading}
                 >
                   Cancel
                 </Button>
